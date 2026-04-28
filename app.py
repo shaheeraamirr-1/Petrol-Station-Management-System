@@ -22,12 +22,17 @@ CORS(app, supports_credentials=True)
 # DATABASE CONNECTION
 # ─────────────────────────────────────────────
 def get_db():
+    import ssl
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
     return pg8000.connect(
         host=os.environ.get('DB_HOST', 'localhost'),
         port=int(os.environ.get('DB_PORT', 5432)),
         database=os.environ.get('DB_NAME', 'psms_db'),
         user=os.environ.get('DB_USER', 'postgres'),
-        password=os.environ.get('DB_PASS', 'postgres')
+        password=os.environ.get('DB_PASS', 'postgres'),
+        ssl_context=ssl_context
     )
 
 # ─────────────────────────────────────────────
