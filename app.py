@@ -7,8 +7,8 @@ CS 2005: Database Systems
 from flask import Flask, request, jsonify, session, render_template, redirect, url_for
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
-import psycopg2
-import psycopg2.extras
+import pg8000
+import pg8000.native
 from datetime import datetime, date
 import uuid
 import os
@@ -22,13 +22,12 @@ CORS(app, supports_credentials=True)
 # DATABASE CONNECTION
 # ─────────────────────────────────────────────
 def get_db():
-    return psycopg2.connect(
+    return pg8000.connect(
         host=os.environ.get('DB_HOST', 'localhost'),
-        port=os.environ.get('DB_PORT', 5432),
-        dbname=os.environ.get('DB_NAME', 'psms_db'),
+        port=int(os.environ.get('DB_PORT', 5432)),
+        database=os.environ.get('DB_NAME', 'psms_db'),
         user=os.environ.get('DB_USER', 'postgres'),
-        password=os.environ.get('DB_PASS', 'postgres'),
-        cursor_factory=psycopg2.extras.RealDictCursor
+        password=os.environ.get('DB_PASS', 'postgres')
     )
 
 # ─────────────────────────────────────────────
