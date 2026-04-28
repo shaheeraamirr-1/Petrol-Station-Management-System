@@ -14,7 +14,7 @@ import uuid
 import os
 from functools import wraps
 
-app = Flask(__name__, template_folder='../frontend/templates', static_folder='../frontend/static')
+app = Flask(__name__, template_folder='frontend/templates', static_folder='frontend/static')
 app.secret_key = os.environ.get('SECRET_KEY', 'psms-secret-dev-key-change-in-prod')
 CORS(app, supports_credentials=True)
 
