@@ -9,20 +9,17 @@ from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
 import pg8000
 import pg8000.native
-from datetime import datetime, date
+from datetime import datetime
 import uuid
 import os
+import ssl
 from functools import wraps
 
 app = Flask(__name__, template_folder='frontend/templates', static_folder='frontend/static')
 app.secret_key = os.environ.get('SECRET_KEY', 'psms-secret-dev-key-change-in-prod')
 CORS(app, supports_credentials=True)
 
-# ─────────────────────────────────────────────
-# DATABASE CONNECTION
-# ─────────────────────────────────────────────
 def get_db():
-    import ssl
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
@@ -35,9 +32,38 @@ def get_db():
         ssl_context=ssl_context
     )
 
-# ─────────────────────────────────────────────
-# AUTH DECORATORS
-# ─────────────────────────────────────────────
+def query(conn, sql, params=None):
+    cur = conn.cursor()
+    cur.execute(sql, params or [])
+    if cur.description is None:
+        return []
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+def query_one(conn, sql, params=None):
+    results = query(conn, sql, params)
+    return results[0] if results else None
+
+def execute(conn, sql, params=None):
+    cur = conn.cursor()
+    cur.execute(sql, params or [])
+    if cur.description:
+        cols = [d[0] for d in cur.description]
+        row = cur.fetchone()
+        return dict(zip(cols, row)) if row else None
+    return None
+
+def serialize_row(r):
+    row = {}
+    for k, v in r.items():
+        if hasattr(v, 'isoformat'):
+            row[k] = v.isoformat()
+        elif hasattr(v, '__float__') and not isinstance(v, (int, bool, str)):
+            row[k] = float(v)
+        else:
+            row[k] = v
+    return row
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -56,9 +82,6 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ─────────────────────────────────────────────
-# PAGE ROUTES (serve HTML)
-# ─────────────────────────────────────────────
 @app.route('/')
 def index():
     if 'user_id' in session:
@@ -101,29 +124,20 @@ def employees_page():
         return redirect(url_for('dashboard'))
     return render_template('employees.html', role=session.get('role'), name=session.get('name'))
 
-# ─────────────────────────────────────────────
-# API: AUTH
-# ─────────────────────────────────────────────
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json()
     username = data.get('username', '').strip()
     password = data.get('password', '')
-
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM employees WHERE username = %s AND is_active = TRUE", (username,))
-    user = cur.fetchone()
+    user = query_one(conn, "SELECT * FROM employees WHERE username = %s AND is_active = TRUE", [username])
     conn.close()
-
     if not user or not check_password_hash(user['password_hash'], password):
         return jsonify({'error': 'Invalid credentials'}), 401
-
     session['user_id'] = user['employee_id']
     session['username'] = user['username']
     session['name'] = user['full_name']
     session['role'] = user['role']
-
     return jsonify({'message': 'Login successful', 'role': user['role'], 'name': user['full_name']})
 
 @app.route('/api/logout', methods=['POST'])
@@ -136,198 +150,109 @@ def api_logout():
 def api_me():
     return jsonify({'user_id': session['user_id'], 'name': session['name'], 'role': session['role']})
 
-# ─────────────────────────────────────────────
-# API: DASHBOARD STATS
-# ─────────────────────────────────────────────
 @app.route('/api/dashboard/stats', methods=['GET'])
 @login_required
 def api_dashboard_stats():
     conn = get_db()
-    cur = conn.cursor()
-
-    # Today's revenue
-    cur.execute("""
-        SELECT COALESCE(SUM(total_amount), 0) AS today_revenue,
-               COUNT(*) AS today_transactions
-        FROM transactions
-        WHERE DATE(created_at) = CURRENT_DATE
-    """)
-    today = cur.fetchone()
-
-    # Active shift for current user
-    cur.execute("""
-        SELECT shift_id, start_time, total_sales
-        FROM shifts
-        WHERE employee_id = %s AND status = 'active'
-        ORDER BY start_time DESC LIMIT 1
-    """, (session['user_id'],))
-    active_shift = cur.fetchone()
-
-    # Low stock tanks
-    cur.execute("SELECT COUNT(*) AS cnt FROM v_low_stock_tanks")
-    low_stock = cur.fetchone()
-
-    # Total employees
-    cur.execute("SELECT COUNT(*) AS cnt FROM employees WHERE is_active = TRUE")
-    emp_count = cur.fetchone()
-
-    # Revenue last 7 days
-    cur.execute("""
-        SELECT DATE(created_at) AS day, COALESCE(SUM(total_amount), 0) AS revenue
-        FROM transactions
-        WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
-        GROUP BY DATE(created_at)
-        ORDER BY day
-    """)
-    weekly = cur.fetchall()
-
+    today = query_one(conn, "SELECT COALESCE(SUM(total_amount), 0) AS today_revenue, COUNT(*) AS today_transactions FROM transactions WHERE DATE(created_at) = CURRENT_DATE")
+    active_shift = query_one(conn, "SELECT shift_id, start_time, total_sales FROM shifts WHERE employee_id = %s AND status = 'active' ORDER BY start_time DESC LIMIT 1", [session['user_id']])
+    low_stock = query_one(conn, "SELECT COUNT(*) AS cnt FROM v_low_stock_tanks")
+    emp_count = query_one(conn, "SELECT COUNT(*) AS cnt FROM employees WHERE is_active = TRUE")
+    weekly = query(conn, "SELECT DATE(created_at) AS day, COALESCE(SUM(total_amount), 0) AS revenue FROM transactions WHERE created_at >= CURRENT_DATE - INTERVAL '6 days' GROUP BY DATE(created_at) ORDER BY day")
     conn.close()
     return jsonify({
-        'today_revenue': float(today['today_revenue']),
-        'today_transactions': today['today_transactions'],
-        'active_shift': dict(active_shift) if active_shift else None,
-        'low_stock_alerts': low_stock['cnt'],
-        'active_employees': emp_count['cnt'],
-        'weekly_revenue': [dict(r) for r in weekly]
+        'today_revenue': float(today['today_revenue']) if today else 0,
+        'today_transactions': today['today_transactions'] if today else 0,
+        'active_shift': serialize_row(active_shift) if active_shift else None,
+        'low_stock_alerts': low_stock['cnt'] if low_stock else 0,
+        'active_employees': emp_count['cnt'] if emp_count else 0,
+        'weekly_revenue': [serialize_row(r) for r in weekly]
     })
 
-# ─────────────────────────────────────────────
-# API: FUEL TYPES
-# ─────────────────────────────────────────────
 @app.route('/api/fuel-types', methods=['GET'])
 @login_required
 def api_fuel_types():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM fuel_types ORDER BY fuel_type_id")
-    rows = cur.fetchall()
+    rows = query(conn, "SELECT * FROM fuel_types ORDER BY fuel_type_id")
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/fuel-types/<int:fid>', methods=['PUT'])
 @admin_required
 def api_update_fuel_price(fid):
     data = request.get_json()
-    price = data.get('price_per_liter')
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("UPDATE fuel_types SET price_per_liter = %s, updated_at = NOW() WHERE fuel_type_id = %s",
-                (price, fid))
+    execute(conn, "UPDATE fuel_types SET price_per_liter = %s, updated_at = NOW() WHERE fuel_type_id = %s", [data.get('price_per_liter'), fid])
     conn.commit()
     conn.close()
     return jsonify({'message': 'Price updated'})
 
-# ─────────────────────────────────────────────
-# API: TANKS / INVENTORY
-# ─────────────────────────────────────────────
 @app.route('/api/tanks', methods=['GET'])
 @login_required
 def api_tanks():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT tk.*, ft.name AS fuel_name, ft.price_per_liter,
+    rows = query(conn, """
+        SELECT tk.tank_id, tk.tank_name, tk.fuel_type_id, tk.capacity_liters,
+               tk.current_level, tk.low_stock_alert, tk.last_refilled,
+               ft.name AS fuel_name, ft.price_per_liter,
                ROUND((tk.current_level / tk.capacity_liters) * 100, 1) AS fill_pct
-        FROM tanks tk
-        JOIN fuel_types ft ON tk.fuel_type_id = ft.fuel_type_id
-        ORDER BY tk.tank_id
+        FROM tanks tk JOIN fuel_types ft ON tk.fuel_type_id = ft.fuel_type_id ORDER BY tk.tank_id
     """)
-    rows = cur.fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/tanks/<int:tid>/refill', methods=['POST'])
 @admin_required
 def api_refill_tank(tid):
-    data = request.get_json()
-    liters = float(data.get('liters', 0))
+    liters = float(request.get_json().get('liters', 0))
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE tanks
-        SET current_level = LEAST(current_level + %s, capacity_liters),
-            last_refilled = NOW()
-        WHERE tank_id = %s
-        RETURNING tank_name, current_level, capacity_liters
-    """, (liters, tid))
-    row = cur.fetchone()
+    row = execute(conn, "UPDATE tanks SET current_level = LEAST(current_level + %s, capacity_liters), last_refilled = NOW() WHERE tank_id = %s RETURNING tank_name, current_level, capacity_liters", [liters, tid])
     conn.commit()
     conn.close()
-    return jsonify({'message': 'Tank refilled', 'tank': dict(row)})
+    return jsonify({'message': 'Tank refilled', 'tank': serialize_row(row)})
 
-# ─────────────────────────────────────────────
-# API: PUMPS
-# ─────────────────────────────────────────────
 @app.route('/api/pumps', methods=['GET'])
 @login_required
 def api_pumps():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT p.pump_id, p.pump_number, p.location_label, p.is_active,
-               ARRAY_AGG(json_build_object(
-                   'fuel_type_id', ft.fuel_type_id,
-                   'fuel_name', ft.name,
-                   'price', ft.price_per_liter,
-                   'tank_id', pft.tank_id,
-                   'tank_level', tk.current_level
-               )) AS fuels
-        FROM pumps p
-        LEFT JOIN pump_fuel_types pft ON p.pump_id = pft.pump_id
-        LEFT JOIN fuel_types ft ON pft.fuel_type_id = ft.fuel_type_id
-        LEFT JOIN tanks tk ON pft.tank_id = tk.tank_id
-        WHERE p.is_active = TRUE
-        GROUP BY p.pump_id, p.pump_number, p.location_label, p.is_active
-        ORDER BY p.pump_number
-    """)
-    rows = cur.fetchall()
+    pumps = query(conn, "SELECT pump_id, pump_number, location_label, is_active FROM pumps WHERE is_active = TRUE ORDER BY pump_number")
+    result = []
+    for p in pumps:
+        fuels = query(conn, """
+            SELECT ft.fuel_type_id, ft.name AS fuel_name, ft.price_per_liter AS price, pft.tank_id, tk.current_level AS tank_level
+            FROM pump_fuel_types pft JOIN fuel_types ft ON pft.fuel_type_id = ft.fuel_type_id JOIN tanks tk ON pft.tank_id = tk.tank_id WHERE pft.pump_id = %s
+        """, [p['pump_id']])
+        p['fuels'] = [serialize_row(f) for f in fuels]
+        result.append(p)
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify(result)
 
-# ─────────────────────────────────────────────
-# API: CONVENIENCE ITEMS
-# ─────────────────────────────────────────────
 @app.route('/api/items', methods=['GET'])
 @login_required
 def api_items():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM convenience_items WHERE is_available = TRUE ORDER BY category, item_name")
-    rows = cur.fetchall()
+    rows = query(conn, "SELECT * FROM convenience_items WHERE is_available = TRUE ORDER BY category, item_name")
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/items', methods=['POST'])
 @admin_required
 def api_add_item():
     data = request.get_json()
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO convenience_items (item_name, price, stock_quantity, category)
-        VALUES (%s, %s, %s, %s) RETURNING item_id
-    """, (data['item_name'], data['price'], data.get('stock_quantity', 0), data.get('category', '')))
-    row = cur.fetchone()
+    row = execute(conn, "INSERT INTO convenience_items (item_name, price, stock_quantity, category) VALUES (%s, %s, %s, %s) RETURNING item_id", [data['item_name'], data['price'], data.get('stock_quantity', 0), data.get('category', '')])
     conn.commit()
     conn.close()
     return jsonify({'item_id': row['item_id'], 'message': 'Item added'})
 
-# ─────────────────────────────────────────────
-# API: SHIFTS
-# ─────────────────────────────────────────────
 @app.route('/api/shifts/start', methods=['POST'])
 @login_required
 def api_start_shift():
     conn = get_db()
-    cur = conn.cursor()
-    # Check no active shift exists
-    cur.execute("SELECT shift_id FROM shifts WHERE employee_id = %s AND status = 'active'", (session['user_id'],))
-    if cur.fetchone():
+    if query_one(conn, "SELECT shift_id FROM shifts WHERE employee_id = %s AND status = 'active'", [session['user_id']]):
         conn.close()
         return jsonify({'error': 'You already have an active shift'}), 400
-    cur.execute("INSERT INTO shifts (employee_id) VALUES (%s) RETURNING shift_id, start_time",
-                (session['user_id'],))
-    row = cur.fetchone()
+    row = execute(conn, "INSERT INTO shifts (employee_id) VALUES (%s) RETURNING shift_id, start_time", [session['user_id']])
     conn.commit()
     conn.close()
     return jsonify({'shift_id': row['shift_id'], 'start_time': str(row['start_time'])})
@@ -336,100 +261,54 @@ def api_start_shift():
 @login_required
 def api_end_shift():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE shifts SET status = 'closed', end_time = NOW()
-        WHERE employee_id = %s AND status = 'active'
-        RETURNING shift_id, total_sales, cash_collected, card_collected
-    """, (session['user_id'],))
-    row = cur.fetchone()
+    row = execute(conn, "UPDATE shifts SET status = 'closed', end_time = NOW() WHERE employee_id = %s AND status = 'active' RETURNING shift_id, total_sales, cash_collected, card_collected", [session['user_id']])
     conn.commit()
     conn.close()
     if not row:
         return jsonify({'error': 'No active shift found'}), 404
-    return jsonify(dict(row))
+    return jsonify(serialize_row(row))
 
 @app.route('/api/shifts', methods=['GET'])
 @login_required
 def api_shifts():
     conn = get_db()
-    cur = conn.cursor()
     if session['role'] == 'admin':
-        cur.execute("SELECT * FROM v_shift_summary ORDER BY shift_id DESC LIMIT 50")
+        rows = query(conn, "SELECT * FROM v_shift_summary ORDER BY shift_id DESC LIMIT 50")
     else:
-        cur.execute("SELECT * FROM v_shift_summary WHERE full_name = %s ORDER BY shift_id DESC LIMIT 20",
-                    (session['name'],))
-    rows = cur.fetchall()
+        rows = query(conn, "SELECT * FROM v_shift_summary WHERE full_name = %s ORDER BY shift_id DESC LIMIT 20", [session['name']])
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/shifts/active', methods=['GET'])
 @login_required
 def api_active_shift():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT s.shift_id, s.start_time, s.total_sales, s.cash_collected, s.card_collected
-        FROM shifts s
-        WHERE s.employee_id = %s AND s.status = 'active'
-        ORDER BY s.start_time DESC LIMIT 1
-    """, (session['user_id'],))
-    row = cur.fetchone()
+    row = query_one(conn, "SELECT shift_id, start_time, total_sales, cash_collected, card_collected FROM shifts WHERE employee_id = %s AND status = 'active' ORDER BY start_time DESC LIMIT 1", [session['user_id']])
     conn.close()
-    return jsonify(dict(row) if row else None)
+    return jsonify(serialize_row(row) if row else None)
 
-# ─────────────────────────────────────────────
-# API: TRANSACTIONS (POS)
-# ─────────────────────────────────────────────
 @app.route('/api/transactions', methods=['POST'])
 @login_required
 def api_create_transaction():
     data = request.get_json()
     conn = get_db()
-    cur = conn.cursor()
-
-    # Get active shift
-    cur.execute("SELECT shift_id FROM shifts WHERE employee_id = %s AND status = 'active'",
-                (session['user_id'],))
-    shift = cur.fetchone()
+    shift = query_one(conn, "SELECT shift_id FROM shifts WHERE employee_id = %s AND status = 'active'", [session['user_id']])
     if not shift:
         conn.close()
         return jsonify({'error': 'No active shift. Please start a shift first.'}), 400
-
-    pump_id       = data.get('pump_id')
-    fuel_type_id  = data.get('fuel_type_id')
-    liters        = data.get('liters_dispensed')
-    fuel_amount   = float(data.get('fuel_amount', 0))
-    conv_amount   = float(data.get('convenience_amount', 0))
-    total         = float(data.get('total_amount', 0))
-    payment       = data.get('payment_method', 'cash')
-    items         = data.get('items', [])  # [{item_id, quantity, unit_price}]
-    receipt_no    = 'RCP-' + datetime.now().strftime('%Y%m%d%H%M%S') + '-' + str(uuid.uuid4())[:4].upper()
-
+    receipt_no = 'RCP-' + datetime.now().strftime('%Y%m%d%H%M%S') + '-' + str(uuid.uuid4())[:4].upper()
     try:
-        cur.execute("""
-            INSERT INTO transactions
-            (shift_id, employee_id, pump_id, fuel_type_id, liters_dispensed,
-             fuel_amount, convenience_amount, total_amount, payment_method, receipt_number)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING transaction_id
-        """, (shift['shift_id'], session['user_id'], pump_id, fuel_type_id,
-              liters, fuel_amount, conv_amount, total, payment, receipt_no))
-        txn = cur.fetchone()
+        txn = execute(conn, """
+            INSERT INTO transactions (shift_id, employee_id, pump_id, fuel_type_id, liters_dispensed, fuel_amount, convenience_amount, total_amount, payment_method, receipt_number)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING transaction_id
+        """, [shift['shift_id'], session['user_id'], data.get('pump_id'), data.get('fuel_type_id'), data.get('liters_dispensed'), float(data.get('fuel_amount', 0)), float(data.get('convenience_amount', 0)), float(data.get('total_amount', 0)), data.get('payment_method', 'cash'), receipt_no])
         txn_id = txn['transaction_id']
-
-        for item in items:
-            cur.execute("""
-                INSERT INTO transaction_items (transaction_id, item_id, quantity, unit_price, subtotal)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (txn_id, item['item_id'], item['quantity'],
-                  item['unit_price'], item['quantity'] * item['unit_price']))
-
+        for item in data.get('items', []):
+            execute(conn, "INSERT INTO transaction_items (transaction_id, item_id, quantity, unit_price, subtotal) VALUES (%s, %s, %s, %s, %s)", [txn_id, item['item_id'], item['quantity'], item['unit_price'], item['quantity'] * item['unit_price']])
         conn.commit()
         return jsonify({'transaction_id': txn_id, 'receipt_number': receipt_no, 'message': 'Transaction recorded'})
     except Exception as e:
         conn.rollback()
-        conn.close()
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
@@ -438,89 +317,54 @@ def api_create_transaction():
 @login_required
 def api_list_transactions():
     conn = get_db()
-    cur = conn.cursor()
+    sql = """SELECT t.transaction_id, t.total_amount, t.payment_method, t.receipt_number, t.created_at, e.full_name, p.pump_number, ft.name AS fuel_name
+             FROM transactions t JOIN employees e ON t.employee_id = e.employee_id
+             LEFT JOIN pumps p ON t.pump_id = p.pump_id LEFT JOIN fuel_types ft ON t.fuel_type_id = ft.fuel_type_id"""
     if session['role'] == 'admin':
-        cur.execute("""
-            SELECT t.*, e.full_name, p.pump_number, ft.name AS fuel_name
-            FROM transactions t
-            JOIN employees e ON t.employee_id = e.employee_id
-            LEFT JOIN pumps p ON t.pump_id = p.pump_id
-            LEFT JOIN fuel_types ft ON t.fuel_type_id = ft.fuel_type_id
-            ORDER BY t.created_at DESC LIMIT 100
-        """)
+        rows = query(conn, sql + " ORDER BY t.created_at DESC LIMIT 100")
     else:
-        cur.execute("""
-            SELECT t.*, e.full_name, p.pump_number, ft.name AS fuel_name
-            FROM transactions t
-            JOIN employees e ON t.employee_id = e.employee_id
-            LEFT JOIN pumps p ON t.pump_id = p.pump_id
-            LEFT JOIN fuel_types ft ON t.fuel_type_id = ft.fuel_type_id
-            WHERE t.employee_id = %s
-            ORDER BY t.created_at DESC LIMIT 50
-        """, (session['user_id'],))
-    rows = cur.fetchall()
+        rows = query(conn, sql + " WHERE t.employee_id = %s ORDER BY t.created_at DESC LIMIT 50", [session['user_id']])
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
-# ─────────────────────────────────────────────
-# API: REPORTS (admin only)
-# ─────────────────────────────────────────────
 @app.route('/api/reports/daily', methods=['GET'])
 @admin_required
 def api_report_daily():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM v_daily_revenue LIMIT 30")
-    rows = cur.fetchall()
+    rows = query(conn, "SELECT * FROM v_daily_revenue LIMIT 30")
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/reports/fuel', methods=['GET'])
 @admin_required
 def api_report_fuel():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM v_fuel_revenue")
-    rows = cur.fetchall()
+    rows = query(conn, "SELECT * FROM v_fuel_revenue")
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/reports/low-stock', methods=['GET'])
 @login_required
 def api_report_low_stock():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM v_low_stock_tanks")
-    rows = cur.fetchall()
+    rows = query(conn, "SELECT * FROM v_low_stock_tanks")
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
-# ─────────────────────────────────────────────
-# API: EMPLOYEES (admin only)
-# ─────────────────────────────────────────────
 @app.route('/api/employees', methods=['GET'])
 @admin_required
 def api_employees():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT employee_id, full_name, username, role, phone, hire_date, is_active FROM employees ORDER BY employee_id")
-    rows = cur.fetchall()
+    rows = query(conn, "SELECT employee_id, full_name, username, role, phone, hire_date, is_active FROM employees ORDER BY employee_id")
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([serialize_row(r) for r in rows])
 
 @app.route('/api/employees', methods=['POST'])
 @admin_required
 def api_add_employee():
     data = request.get_json()
-    hashed = generate_password_hash(data['password'])
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO employees (full_name, username, password_hash, role, phone, hire_date)
-        VALUES (%s, %s, %s, %s, %s, CURRENT_DATE)
-        RETURNING employee_id
-    """, (data['full_name'], data['username'], hashed, data['role'], data.get('phone', '')))
-    row = cur.fetchone()
+    row = execute(conn, "INSERT INTO employees (full_name, username, password_hash, role, phone, hire_date) VALUES (%s, %s, %s, %s, %s, CURRENT_DATE) RETURNING employee_id", [data['full_name'], data['username'], generate_password_hash(data['password']), data['role'], data.get('phone', '')])
     conn.commit()
     conn.close()
     return jsonify({'employee_id': row['employee_id'], 'message': 'Employee added'})
@@ -530,18 +374,10 @@ def api_add_employee():
 def api_update_employee(eid):
     data = request.get_json()
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE employees SET full_name = %s, phone = %s, role = %s, is_active = %s
-        WHERE employee_id = %s
-    """, (data['full_name'], data.get('phone', ''), data['role'], data.get('is_active', True), eid))
+    execute(conn, "UPDATE employees SET full_name = %s, phone = %s, role = %s, is_active = %s WHERE employee_id = %s", [data['full_name'], data.get('phone', ''), data['role'], data.get('is_active', True), eid])
     conn.commit()
     conn.close()
     return jsonify({'message': 'Employee updated'})
-
-# ─────────────────────────────────────────────
-# RUN
-# ─────────────────────────────────────────────
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
