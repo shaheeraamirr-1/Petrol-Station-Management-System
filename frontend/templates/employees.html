@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Employees{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+  <div>
+    <h1><i class="bi bi-people me-2" style="color:var(--fuel)"></i>Employee Management</h1>
+    <p>Manage staff accounts and roles</p>
+  </div>
+  <button class="btn btn-fuel" data-bs-toggle="modal" data-bs-target="#addEmpModal">
+    <i class="bi bi-person-plus me-1"></i>Add Employee
+  </button>
+</div>
+
+<div class="table-wrapper">
+  <table class="table mb-0">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>Username</th><th>Role</th>
+      <th>Phone</th><th>Hire Date</th><th>Status</th><th>Action</th>
+    </tr></thead>
+    <tbody id="emp-table-body"><tr><td colspan="8" class="text-center" style="padding:2rem; color:#4a5568;">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Add Employee Modal -->
+<div class="modal fade" id="addEmpModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">Add New Employee</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-3"><label class="form-label">Full Name</label>
+        <input type="text" class="form-control" id="new-name"></div>
+      <div class="mb-3"><label class="form-label">Username</label>
+        <input type="text" class="form-control" id="new-username"></div>
+      <div class="mb-3"><label class="form-label">Password</label>
+        <input type="password" class="form-control" id="new-password"></div>
+      <div class="mb-3"><label class="form-label">Role</label>
+        <select class="form-select" id="new-role">
+          <option value="cashier">Cashier</option>
+          <option value="admin">Admin</option>
+        </select></div>
+      <div class="mb-3"><label class="form-label">Phone</label>
+        <input type="text" class="form-control" id="new-phone"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-fuel" onclick="addEmployee()">Add Employee</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Edit Employee Modal -->
+<div class="modal fade" id="editEmpModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">Edit Employee</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-emp-id">
+      <div class="mb-3"><label class="form-label">Full Name</label>
+        <input type="text" class="form-control" id="edit-name"></div>
+      <div class="mb-3"><label class="form-label">Phone</label>
+        <input type="text" class="form-control" id="edit-phone"></div>
+      <div class="mb-3"><label class="form-label">Role</label>
+        <select class="form-select" id="edit-role">
+          <option value="cashier">Cashier</option>
+          <option value="admin">Admin</option>
+        </select></div>
+      <div class="mb-3"><label class="form-label">Status</label>
+        <select class="form-select" id="edit-status">
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+        </select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-fuel" onclick="saveEmployee()">Save Changes</button>
+    </div>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadEmployees() {
+  const res = await fetch('/api/employees', {credentials:'include'});
+  const emps = await res.json();
+  const tbody = document.getElementById('emp-table-body');
+  tbody.innerHTML = emps.map(e => `<tr>
+    <td style="color:#4a5568;">#${e.employee_id}</td>
+    <td style="color:#fff; font-weight:500;">${e.full_name}</td>
+    <td style="color:#8a9bc0;">${e.username}</td>
+    <td><span class="${e.role==='admin'?'badge-fuel':'badge-ok'}" style="text-transform:capitalize;">${e.role}</span></td>
+    <td style="font-size:.85rem;">${e.phone||'—'}</td>
+    <td style="font-size:.82rem; color:#4a5568;">${new Date(e.hire_date).toLocaleDateString('en-PK')}</td>
+    <td>${e.is_active ? '<span class="badge-ok">Active</span>' : '<span class="badge-danger">Inactive</span>'}</td>
+    <td><button class="btn btn-sm btn-outline-fuel"
+        onclick="openEdit(${e.employee_id},'${e.full_name}','${e.phone||''}','${e.role}',${e.is_active})">Edit</button></td>
+  </tr>`).join('');
+}
+
+async function addEmployee() {
+  const payload = {
+    full_name: document.getElementById('new-name').value,
+    username:  document.getElementById('new-username').value,
+    password:  document.getElementById('new-password').value,
+    role:      document.getElementById('new-role').value,
+    phone:     document.getElementById('new-phone').value
+  };
+  const res = await fetch('/api/employees', {
+    method:'POST', credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const d = await res.json();
+  if (res.ok) {
+    showToast('Employee added'); bootstrap.Modal.getInstance(document.getElementById('addEmpModal')).hide();
+    loadEmployees();
+  } else showToast(d.error||'Failed', 'error');
+}
+
+function openEdit(id, name, phone, role, isActive) {
+  document.getElementById('edit-emp-id').value  = id;
+  document.getElementById('edit-name').value    = name;
+  document.getElementById('edit-phone').value   = phone;
+  document.getElementById('edit-role').value    = role;
+  document.getElementById('edit-status').value  = String(isActive);
+  new bootstrap.Modal(document.getElementById('editEmpModal')).show();
+}
+async function saveEmployee() {
+  const id = document.getElementById('edit-emp-id').value;
+  const payload = {
+    full_name:  document.getElementById('edit-name').value,
+    phone:      document.getElementById('edit-phone').value,
+    role:       document.getElementById('edit-role').value,
+    is_active:  document.getElementById('edit-status').value === 'true'
+  };
+  const res = await fetch(`/api/employees/${id}`, {
+    method:'PUT', credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) {
+    showToast('Employee updated'); bootstrap.Modal.getInstance(document.getElementById('editEmpModal')).hide();
+    loadEmployees();
+  } else showToast('Failed to update', 'error');
+}
+loadEmployees();
+</script>
+{% endblock %}

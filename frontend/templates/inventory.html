@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+  <div>
+    <h1><i class="bi bi-droplet-half me-2" style="color:var(--fuel)"></i>Inventory</h1>
+    <p>Underground tank levels and fuel pricing</p>
+  </div>
+  {% if role == 'admin' %}
+  <button class="btn btn-fuel" data-bs-toggle="modal" data-bs-target="#refillModal">
+    <i class="bi bi-arrow-repeat me-1"></i>Record Refill
+  </button>
+  {% endif %}
+</div>
+
+<!-- Tank Cards -->
+<div class="row g-3 mb-4" id="tank-cards"></div>
+
+<!-- Fuel Pricing Table -->
+<div class="table-wrapper">
+  <div class="d-flex justify-content-between align-items-center p-3" style="border-bottom:1px solid var(--border)">
+    <div style="font-family:'Rajdhani',sans-serif; font-size:1.1rem; font-weight:700; color:#fff;">
+      <i class="bi bi-currency-dollar me-2" style="color:var(--fuel)"></i>Current Fuel Prices
+    </div>
+  </div>
+  <table class="table mb-0">
+    <thead><tr>
+      <th>Fuel Type</th><th>Price / Liter</th><th>Last Updated</th>
+      {% if role == 'admin' %}<th>Action</th>{% endif %}
+    </tr></thead>
+    <tbody id="price-table-body"></tbody>
+  </table>
+</div>
+
+<!-- Refill Modal -->
+{% if role == 'admin' %}
+<div class="modal fade" id="refillModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">Record Tank Refill</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-3">
+        <label class="form-label">Select Tank</label>
+        <select class="form-select" id="refill-tank-id"></select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Liters Added</label>
+        <input type="number" class="form-control" id="refill-liters" placeholder="e.g. 5000" min="1">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-fuel" onclick="doRefill()">Confirm Refill</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Price Edit Modal -->
+<div class="modal fade" id="priceModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">Update Fuel Price</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-fuel-id">
+      <div class="mb-3">
+        <label class="form-label">Fuel Type</label>
+        <div class="form-control" id="edit-fuel-name" style="color:#fff;"></div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">New Price (₨/L)</label>
+        <input type="number" class="form-control" id="edit-fuel-price" step="0.01" min="0">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-fuel" onclick="savePrice()">Save Price</button>
+    </div>
+  </div></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let tanksData = [];
+const isAdmin = '{{ role }}' === 'admin';
+
+async function loadTanks() {
+  const res = await fetch('/api/tanks', {credentials:'include'});
+  tanksData = await res.json();
+
+  const cards = document.getElementById('tank-cards');
+  cards.innerHTML = tanksData.map(t => {
+    const pct = t.fill_pct;
+    const color = pct > 40 ? '#22c55e' : pct > 20 ? '#eab308' : '#ef4444';
+    const badge = pct > 40 ? 'badge-ok' : pct > 20 ? 'badge-warn' : 'badge-danger';
+    return `<div class="col-md-4 col-lg-2-4">
+      <div class="stat-card">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div style="font-family:'Rajdhani',sans-serif; font-size:1.1rem; color:#fff; font-weight:700;">${t.tank_name}</div>
+          <span class="${badge}">${pct}%</span>
+        </div>
+        <div style="color:#4a5568; font-size:.78rem; margin-bottom:.5rem;">${t.fuel_name}</div>
+        <div class="tank-bar mb-1"><div class="tank-fill" style="width:${pct}%; background:${color}"></div></div>
+        <div style="font-size:.78rem; color:#8a9bc0;">${Number(t.current_level).toLocaleString()} / ${Number(t.capacity_liters).toLocaleString()} L</div>
+        ${t.current_level <= t.low_stock_alert ? `<div class="mt-1" style="font-size:.72rem; color:#ef4444;"><i class="bi bi-exclamation-triangle me-1"></i>Below alert threshold</div>` : ''}
+        ${t.last_refilled ? `<div style="font-size:.7rem; color:#3a4455; margin-top:.3rem;">Last refill: ${new Date(t.last_refilled).toLocaleDateString()}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Populate refill dropdown
+  if (isAdmin) {
+    const sel = document.getElementById('refill-tank-id');
+    if (sel) { sel.innerHTML = tanksData.map(t => `<option value="${t.tank_id}">${t.tank_name} – ${t.fuel_name}</option>`).join(''); }
+  }
+}
+
+async function loadPrices() {
+  const res = await fetch('/api/fuel-types', {credentials:'include'});
+  const fuels = await res.json();
+  const tbody = document.getElementById('price-table-body');
+  tbody.innerHTML = fuels.map(f => `
+    <tr>
+      <td><span style="color:#fff; font-weight:500;">${f.name}</span></td>
+      <td><span class="badge-fuel">₨ ${Number(f.price_per_liter).toFixed(2)}</span></td>
+      <td style="color:#4a5568; font-size:.8rem;">${new Date(f.updated_at).toLocaleString('en-PK')}</td>
+      ${isAdmin ? `<td><button class="btn btn-sm btn-outline-fuel" onclick="openEditPrice(${f.fuel_type_id},'${f.name}',${f.price_per_liter})">Edit</button></td>` : ''}
+    </tr>`).join('');
+}
+
+function openEditPrice(id, name, price) {
+  document.getElementById('edit-fuel-id').value = id;
+  document.getElementById('edit-fuel-name').textContent = name;
+  document.getElementById('edit-fuel-price').value = price;
+  new bootstrap.Modal(document.getElementById('priceModal')).show();
+}
+async function savePrice() {
+  const id = document.getElementById('edit-fuel-id').value;
+  const price = document.getElementById('edit-fuel-price').value;
+  const res = await fetch(`/api/fuel-types/${id}`, {
+    method:'PUT', credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ price_per_liter: price })
+  });
+  if (res.ok) {
+    showToast('Price updated'); bootstrap.Modal.getInstance(document.getElementById('priceModal')).hide();
+    loadPrices();
+  } else showToast('Failed to update price', 'error');
+}
+async function doRefill() {
+  const tid = document.getElementById('refill-tank-id').value;
+  const liters = document.getElementById('refill-liters').value;
+  const res = await fetch(`/api/tanks/${tid}/refill`, {
+    method:'POST', credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ liters })
+  });
+  const d = await res.json();
+  if (res.ok) {
+    showToast(`${d.tank.tank_name} refilled to ${Number(d.tank.current_level).toLocaleString()} L`);
+    bootstrap.Modal.getInstance(document.getElementById('refillModal')).hide();
+    loadTanks();
+  } else showToast(d.error, 'error');
+}
+
+loadTanks(); loadPrices();
+</script>
+{% endblock %}

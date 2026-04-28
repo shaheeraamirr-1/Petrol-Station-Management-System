@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+  <div>
+    <h1><i class="bi bi-speedometer2 me-2" style="color:var(--fuel)"></i>Dashboard</h1>
+    <p>Live overview — <span id="current-time"></span></p>
+  </div>
+  <div id="shift-controls" class="d-flex gap-2"></div>
+</div>
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="stat-card d-flex justify-content-between align-items-start">
+      <div>
+        <div class="stat-label">Today's Revenue</div>
+        <div class="stat-value" id="stat-revenue">—</div>
+        <div style="color:#4a5568; font-size:.75rem;" id="stat-txns"></div>
+      </div>
+      <div class="stat-icon" style="background:rgba(255,107,0,.12); color:var(--fuel)"><i class="bi bi-cash-stack"></i></div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card d-flex justify-content-between align-items-start">
+      <div>
+        <div class="stat-label">Active Shift Sales</div>
+        <div class="stat-value" id="stat-shift">—</div>
+        <div style="color:#4a5568; font-size:.75rem;" id="stat-shift-sub"></div>
+      </div>
+      <div class="stat-icon" style="background:rgba(34,197,94,.1); color:#22c55e"><i class="bi bi-clock-history"></i></div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card d-flex justify-content-between align-items-start">
+      <div>
+        <div class="stat-label">Low Stock Alerts</div>
+        <div class="stat-value" id="stat-alerts">—</div>
+        <div style="color:#4a5568; font-size:.75rem;">tanks below threshold</div>
+      </div>
+      <div class="stat-icon" style="background:rgba(234,179,8,.1); color:#eab308"><i class="bi bi-exclamation-triangle"></i></div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card d-flex justify-content-between align-items-start">
+      <div>
+        <div class="stat-label">Active Staff</div>
+        <div class="stat-value" id="stat-staff">—</div>
+        <div style="color:#4a5568; font-size:.75rem;">employees on record</div>
+      </div>
+      <div class="stat-icon" style="background:rgba(99,102,241,.15); color:#818cf8"><i class="bi bi-people"></i></div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row g-3">
+  <div class="col-md-8">
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-bar-chart-line" style="color:var(--fuel)"></i> 7-Day Revenue</div>
+      <canvas id="revenueChart" height="90"></canvas>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-droplet-half" style="color:var(--fuel)"></i> Tank Levels</div>
+      <div id="tank-list"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script>
+let revenueChart;
+
+function updateClock() {
+  document.getElementById('current-time').textContent = new Date().toLocaleString('en-PK',
+    {weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+updateClock(); setInterval(updateClock, 60000);
+
+async function loadDashboard() {
+  const res = await fetch('/api/dashboard/stats', {credentials:'include'});
+  const d   = await res.json();
+
+  document.getElementById('stat-revenue').textContent = '₨ ' + Number(d.today_revenue).toLocaleString();
+  document.getElementById('stat-txns').textContent    = d.today_transactions + ' transactions today';
+  document.getElementById('stat-alerts').textContent  = d.low_stock_alerts;
+  document.getElementById('stat-staff').textContent   = d.active_employees;
+
+  if (d.active_shift) {
+    document.getElementById('stat-shift').textContent    = '₨ ' + Number(d.active_shift.total_sales).toLocaleString();
+    document.getElementById('stat-shift-sub').textContent = 'Started ' +
+      new Date(d.active_shift.start_time).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('shift-controls').innerHTML =
+      `<button class="btn btn-sm btn-outline-fuel" onclick="endShift()"><i class="bi bi-stop-circle me-1"></i>End Shift</button>`;
+  } else {
+    document.getElementById('stat-shift').textContent = 'No shift';
+    document.getElementById('stat-shift-sub').textContent = 'Not clocked in';
+    document.getElementById('shift-controls').innerHTML =
+      `<button class="btn btn-sm btn-fuel" onclick="startShift()"><i class="bi bi-play-circle me-1"></i>Start Shift</button>`;
+  }
+
+  // Revenue chart
+  const labels = d.weekly_revenue.map(r => new Date(r.day).toLocaleDateString('en-PK',{weekday:'short',day:'numeric'}));
+  const values = d.weekly_revenue.map(r => r.revenue);
+  if (revenueChart) revenueChart.destroy();
+  revenueChart = new Chart(document.getElementById('revenueChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets:[{ label:'Revenue (₨)', data:values, backgroundColor:'rgba(255,107,0,.7)',
+                  borderColor:'#FF6B00', borderRadius:6, borderWidth:1 }]
+    },
+    options: {
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#4a5568'} },
+        y:{ grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#4a5568',
+            callback:v=>'₨'+Number(v).toLocaleString()} }
+      }
+    }
+  });
+}
+
+async function loadTanks() {
+  const res = await fetch('/api/tanks', {credentials:'include'});
+  const tanks = await res.json();
+  const html = tanks.map(t => {
+    const pct = t.fill_pct;
+    const color = pct > 40 ? '#22c55e' : pct > 20 ? '#eab308' : '#ef4444';
+    return `<div class="mb-3">
+      <div class="d-flex justify-content-between" style="font-size:.82rem;">
+        <span style="color:#fff">${t.tank_name}</span>
+        <span style="color:${color}">${pct}%</span>
+      </div>
+      <div style="color:#4a5568; font-size:.72rem; margin-bottom:3px;">${t.fuel_name}</div>
+      <div class="tank-bar"><div class="tank-fill" style="width:${pct}%; background:${color}"></div></div>
+      <div style="color:#4a5568; font-size:.7rem; margin-top:2px;">${Number(t.current_level).toLocaleString()} / ${Number(t.capacity_liters).toLocaleString()} L</div>
+    </div>`;
+  }).join('');
+  document.getElementById('tank-list').innerHTML = html;
+}
+
+async function startShift() {
+  const res = await fetch('/api/shifts/start', {method:'POST', credentials:'include'});
+  const d = await res.json();
+  if (res.ok) { showToast('Shift started!'); loadDashboard(); }
+  else showToast(d.error, 'error');
+}
+async function endShift() {
+  if (!confirm('End your current shift?')) return;
+  const res = await fetch('/api/shifts/end', {method:'POST', credentials:'include'});
+  const d = await res.json();
+  if (res.ok) { showToast(`Shift closed. Total: ₨${Number(d.total_sales).toLocaleString()}`); loadDashboard(); }
+  else showToast(d.error, 'error');
+}
+
+loadDashboard(); loadTanks();
+</script>
+{% endblock %}

@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+{% block title %}Point of Sale{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="bi bi-receipt me-2" style="color:var(--fuel)"></i>Point of Sale</h1>
+  <p>Process fuel and convenience store transactions</p>
+</div>
+
+<div class="row g-3">
+  <!-- Left: Transaction Builder -->
+  <div class="col-md-8">
+    <!-- Fuel Sale -->
+    <div class="data-card mb-3">
+      <div class="data-card-title"><i class="bi bi-fuel-pump" style="color:var(--fuel)"></i> Fuel Sale</div>
+      <div class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label">Pump</label>
+          <select class="form-select" id="pump-select" onchange="onPumpChange()">
+            <option value="">Select pump...</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fuel Type</label>
+          <select class="form-select" id="fuel-select" onchange="calcFuel()" disabled>
+            <option value="">Select fuel type...</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Liters</label>
+          <input type="number" class="form-control" id="liters-input" placeholder="0.000"
+                 step="0.001" min="0" oninput="calcFuel()">
+        </div>
+        <div class="col-md-2 d-flex flex-column">
+          <label class="form-label">Amount (₨)</label>
+          <div class="form-control d-flex align-items-center" id="fuel-amount-display" style="color:var(--fuel); font-weight:600;">0.00</div>
+        </div>
+      </div>
+      <div class="mt-2" style="font-size:.78rem; color:#4a5568;" id="price-hint"></div>
+      <button class="btn btn-outline-fuel btn-sm mt-2" onclick="addFuelToCart()">
+        <i class="bi bi-plus-circle me-1"></i>Add Fuel to Bill
+      </button>
+    </div>
+
+    <!-- Convenience Items -->
+    <div class="data-card mb-3">
+      <div class="data-card-title"><i class="bi bi-shop" style="color:var(--fuel)"></i> Convenience Store</div>
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6">
+          <label class="form-label">Item</label>
+          <select class="form-select" id="item-select">
+            <option value="">Select item...</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Qty</label>
+          <input type="number" class="form-control" id="item-qty" value="1" min="1">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Price</label>
+          <div class="form-control" id="item-price-display" style="color:var(--fuel)">—</div>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-outline-fuel btn-sm w-100" onclick="addItemToCart()">+ Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart -->
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-cart3" style="color:var(--fuel)"></i> Bill Items</div>
+      <table class="table mb-0" id="cart-table">
+        <thead><tr>
+          <th>Description</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th><th></th>
+        </tr></thead>
+        <tbody id="cart-body">
+          <tr id="empty-row"><td colspan="5" class="text-center" style="color:#4a5568; padding:2rem;">No items added yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right: Checkout Panel -->
+  <div class="col-md-4">
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-credit-card-2-front" style="color:var(--fuel)"></i> Checkout</div>
+
+      <div class="mb-3 p-3 rounded" style="background:#0D0F14;">
+        <div class="d-flex justify-content-between mb-2" style="font-size:.85rem; color:#4a5568;">
+          <span>Fuel Total</span><span id="sum-fuel">₨ 0.00</span>
+        </div>
+        <div class="d-flex justify-content-between mb-2" style="font-size:.85rem; color:#4a5568;">
+          <span>Store Total</span><span id="sum-store">₨ 0.00</span>
+        </div>
+        <hr style="border-color:var(--border); margin:.5rem 0;">
+        <div class="d-flex justify-content-between">
+          <span style="font-family:'Rajdhani',sans-serif; font-weight:700; font-size:1.1rem;">TOTAL</span>
+          <span style="font-family:'Rajdhani',sans-serif; font-weight:700; font-size:1.4rem; color:var(--fuel);" id="sum-total">₨ 0.00</span>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Payment Method</label>
+        <div class="d-flex gap-2">
+          <button class="btn btn-fuel flex-fill" id="btn-cash" onclick="setPayment('cash')">
+            <i class="bi bi-cash me-1"></i>Cash
+          </button>
+          <button class="btn btn-outline-fuel flex-fill" id="btn-card" onclick="setPayment('card')">
+            <i class="bi bi-credit-card me-1"></i>Card
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-3" id="cash-change-section" style="display:none;">
+        <label class="form-label">Cash Received (₨)</label>
+        <input type="number" class="form-control" id="cash-received" oninput="calcChange()">
+        <div class="mt-1" style="font-size:.82rem; color:#22c55e;" id="change-display"></div>
+      </div>
+
+      <button class="btn btn-fuel w-100 py-3" style="font-size:1.1rem;" onclick="processTransaction()">
+        <i class="bi bi-check2-circle me-2"></i>PROCESS TRANSACTION
+      </button>
+      <button class="btn btn-outline-secondary w-100 mt-2" onclick="clearCart()">
+        <i class="bi bi-x-circle me-1"></i>Clear
+      </button>
+    </div>
+
+    <!-- Receipt -->
+    <div class="data-card mt-3" id="receipt-panel" style="display:none;">
+      <div class="data-card-title"><i class="bi bi-receipt-cutoff" style="color:#22c55e"></i> Receipt</div>
+      <div id="receipt-content" style="font-family:monospace; font-size:.8rem; white-space:pre-wrap;
+           background:#0D0F14; padding:1rem; border-radius:8px; color:#c5cdd8;"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let cart = { fuelItem: null, storeItems: [], paymentMethod: 'cash' };
+let pumpsData = [], itemsData = [];
+
+async function loadPumps() {
+  const res = await fetch('/api/pumps', {credentials:'include'});
+  pumpsData = await res.json();
+  const sel = document.getElementById('pump-select');
+  pumpsData.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.pump_id;
+    opt.textContent = `Pump ${p.pump_number} — ${p.location_label}`;
+    sel.appendChild(opt);
+  });
+}
+async function loadItems() {
+  const res = await fetch('/api/items', {credentials:'include'});
+  itemsData = await res.json();
+  const sel = document.getElementById('item-select');
+  itemsData.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = it.item_id;
+    opt.dataset.price = it.price;
+    opt.textContent = `${it.item_name} (₨${it.price})`;
+    sel.appendChild(opt);
+  });
+  sel.onchange = () => {
+    const opt = sel.options[sel.selectedIndex];
+    document.getElementById('item-price-display').textContent = opt.dataset.price ? '₨ '+opt.dataset.price : '—';
+  };
+}
+function onPumpChange() {
+  const pid = parseInt(document.getElementById('pump-select').value);
+  const pump = pumpsData.find(p => p.pump_id === pid);
+  const fSel = document.getElementById('fuel-select');
+  fSel.innerHTML = '<option value="">Select fuel type...</option>';
+  fSel.disabled = !pump;
+  if (!pump) return;
+  pump.fuels.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify(f);
+    opt.textContent = `${f.fuel_name} — ₨${f.price}/L`;
+    fSel.appendChild(opt);
+  });
+  fSel.disabled = false;
+  document.getElementById('price-hint').textContent = '';
+  document.getElementById('fuel-amount-display').textContent = '0.00';
+}
+function calcFuel() {
+  const fVal = document.getElementById('fuel-select').value;
+  const liters = parseFloat(document.getElementById('liters-input').value) || 0;
+  if (!fVal || liters <= 0) { document.getElementById('fuel-amount-display').textContent='0.00'; return; }
+  const f = JSON.parse(fVal);
+  const amt = (liters * f.price).toFixed(2);
+  document.getElementById('fuel-amount-display').textContent = amt;
+  document.getElementById('price-hint').textContent = `₨ ${f.price}/L × ${liters} L`;
+}
+function addFuelToCart() {
+  const pid = document.getElementById('pump-select').value;
+  const fVal = document.getElementById('fuel-select').value;
+  const liters = parseFloat(document.getElementById('liters-input').value);
+  if (!pid || !fVal || !liters) { showToast('Select pump, fuel, and liters', 'error'); return; }
+  const f = JSON.parse(fVal);
+  const amount = liters * f.price;
+  cart.fuelItem = { pump_id: parseInt(pid), fuel_type_id: f.fuel_type_id,
+                    liters, price: f.price, amount, desc: `${f.fuel_name} (${liters}L)` };
+  renderCart();
+}
+function addItemToCart() {
+  const sel = document.getElementById('item-select');
+  const item_id = parseInt(sel.value);
+  if (!item_id) { showToast('Select an item', 'error'); return; }
+  const qty = parseInt(document.getElementById('item-qty').value) || 1;
+  const item = itemsData.find(i => i.item_id === item_id);
+  const existing = cart.storeItems.find(i => i.item_id === item_id);
+  if (existing) existing.quantity += qty;
+  else cart.storeItems.push({ item_id, item_name: item.item_name, quantity: qty, unit_price: parseFloat(item.price) });
+  renderCart();
+}
+function renderCart() {
+  const tbody = document.getElementById('cart-body');
+  let rows = '';
+  let fuelTotal = 0, storeTotal = 0;
+
+  if (cart.fuelItem) {
+    fuelTotal = cart.fuelItem.amount;
+    rows += `<tr><td>${cart.fuelItem.desc}</td><td>1</td><td>₨${cart.fuelItem.price}/L</td>
+             <td>₨${fuelTotal.toFixed(2)}</td>
+             <td><button class="btn btn-sm" style="color:#ef4444;" onclick="removeFuel()"><i class="bi bi-trash"></i></button></td></tr>`;
+  }
+  cart.storeItems.forEach((it, idx) => {
+    const sub = it.quantity * it.unit_price;
+    storeTotal += sub;
+    rows += `<tr><td>${it.item_name}</td><td>${it.quantity}</td><td>₨${it.unit_price}</td>
+             <td>₨${sub.toFixed(2)}</td>
+             <td><button class="btn btn-sm" style="color:#ef4444;" onclick="removeItem(${idx})"><i class="bi bi-trash"></i></button></td></tr>`;
+  });
+
+  if (!rows) rows = `<tr id="empty-row"><td colspan="5" class="text-center" style="color:#4a5568; padding:2rem;">No items added yet</td></tr>`;
+  tbody.innerHTML = rows;
+
+  const total = fuelTotal + storeTotal;
+  document.getElementById('sum-fuel').textContent  = '₨ ' + fuelTotal.toFixed(2);
+  document.getElementById('sum-store').textContent = '₨ ' + storeTotal.toFixed(2);
+  document.getElementById('sum-total').textContent = '₨ ' + total.toFixed(2);
+}
+function removeFuel() { cart.fuelItem = null; renderCart(); }
+function removeItem(idx) { cart.storeItems.splice(idx,1); renderCart(); }
+function clearCart() { cart = { fuelItem:null, storeItems:[], paymentMethod:'cash' }; renderCart();
+  document.getElementById('receipt-panel').style.display='none'; setPayment('cash'); }
+
+function setPayment(method) {
+  cart.paymentMethod = method;
+  document.getElementById('btn-cash').className = method==='cash' ? 'btn btn-fuel flex-fill' : 'btn btn-outline-fuel flex-fill';
+  document.getElementById('btn-card').className = method==='card' ? 'btn btn-fuel flex-fill' : 'btn btn-outline-fuel flex-fill';
+  document.getElementById('cash-change-section').style.display = method==='cash' ? 'block' : 'none';
+}
+function calcChange() {
+  const total = parseFloat(document.getElementById('sum-total').textContent.replace('₨ ','')) || 0;
+  const received = parseFloat(document.getElementById('cash-received').value) || 0;
+  const change = received - total;
+  document.getElementById('change-display').textContent = change >= 0 ? `Change: ₨ ${change.toFixed(2)}` : 'Insufficient amount';
+}
+
+async function processTransaction() {
+  const total = parseFloat(document.getElementById('sum-total').textContent.replace('₨ ','')) || 0;
+  if (total <= 0) { showToast('No items in cart', 'error'); return; }
+
+  const payload = {
+    pump_id: cart.fuelItem ? cart.fuelItem.pump_id : null,
+    fuel_type_id: cart.fuelItem ? cart.fuelItem.fuel_type_id : null,
+    liters_dispensed: cart.fuelItem ? cart.fuelItem.liters : null,
+    fuel_amount: cart.fuelItem ? cart.fuelItem.amount : 0,
+    convenience_amount: cart.storeItems.reduce((s,i) => s + i.quantity * i.unit_price, 0),
+    total_amount: total,
+    payment_method: cart.paymentMethod,
+    items: cart.storeItems.map(i => ({ item_id: i.item_id, quantity: i.quantity, unit_price: i.unit_price }))
+  };
+
+  const res = await fetch('/api/transactions', {
+    method:'POST', credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const d = await res.json();
+  if (res.ok) {
+    showToast(`Transaction processed! Receipt: ${d.receipt_number}`);
+    showReceipt(d.receipt_number, payload);
+    clearCart();
+  } else {
+    showToast(d.error || 'Transaction failed', 'error');
+  }
+}
+function showReceipt(rcpt, p) {
+  const now = new Date().toLocaleString('en-PK');
+  let text = `PETROL STATION MANAGEMENT SYSTEM\n`;
+  text += `================================\n`;
+  text += `Receipt: ${rcpt}\n`;
+  text += `Date: ${now}\n`;
+  text += `Payment: ${p.payment_method.toUpperCase()}\n`;
+  text += `--------------------------------\n`;
+  if (p.liters_dispensed) text += `Fuel: ${p.liters_dispensed}L  ₨${p.fuel_amount.toFixed(2)}\n`;
+  p.items.forEach(i => {
+    const item = itemsData.find(x => x.item_id === i.item_id);
+    text += `${item?.item_name||'Item'} x${i.quantity}  ₨${(i.quantity*i.unit_price).toFixed(2)}\n`;
+  });
+  text += `================================\n`;
+  text += `TOTAL: ₨ ${p.total_amount.toFixed(2)}\n`;
+  text += `================================\n`;
+  document.getElementById('receipt-content').textContent = text;
+  document.getElementById('receipt-panel').style.display = 'block';
+}
+
+loadPumps(); loadItems();
+</script>
+{% endblock %}

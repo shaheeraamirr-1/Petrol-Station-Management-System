@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="bi bi-bar-chart-line me-2" style="color:var(--fuel)"></i>Reports & Analytics</h1>
+  <p>Financial performance and operational insights</p>
+</div>
+
+<div class="row g-3">
+  <!-- Daily Revenue Chart -->
+  <div class="col-12">
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-calendar3" style="color:var(--fuel)"></i> Daily Revenue (Last 30 Days)</div>
+      <canvas id="dailyChart" height="60"></canvas>
+    </div>
+  </div>
+
+  <!-- Fuel Revenue by Type -->
+  <div class="col-md-6">
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-pie-chart" style="color:var(--fuel)"></i> Revenue by Fuel Type</div>
+      <canvas id="fuelChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Low Stock Tanks -->
+  <div class="col-md-6">
+    <div class="data-card">
+      <div class="data-card-title"><i class="bi bi-exclamation-triangle" style="color:#eab308"></i> Low Stock Alerts</div>
+      <div id="low-stock-report"></div>
+    </div>
+  </div>
+
+  <!-- Daily Revenue Table -->
+  <div class="col-12">
+    <div class="table-wrapper">
+      <div class="p-3" style="border-bottom:1px solid var(--border);">
+        <div style="font-family:'Rajdhani',sans-serif; font-size:1.1rem; font-weight:700; color:#fff;">
+          <i class="bi bi-table me-2" style="color:var(--fuel)"></i>Daily Revenue Summary
+        </div>
+      </div>
+      <table class="table mb-0">
+        <thead><tr>
+          <th>Date</th><th>Transactions</th><th>Fuel Revenue</th>
+          <th>Store Revenue</th><th>Cash</th><th>Card</th><th>Grand Total</th>
+        </tr></thead>
+        <tbody id="daily-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script>
+async function loadReports() {
+  // Daily revenue
+  const dr = await fetch('/api/reports/daily', {credentials:'include'}).then(r => r.json());
+  const labels = dr.map(r => new Date(r.sale_date).toLocaleDateString('en-PK',{month:'short',day:'numeric'})).reverse();
+  const vals   = dr.map(r => parseFloat(r.grand_total)).reverse();
+
+  new Chart(document.getElementById('dailyChart'), {
+    type:'line',
+    data:{ labels, datasets:[{
+      label:'Revenue (₨)', data:vals,
+      borderColor:'#FF6B00', backgroundColor:'rgba(255,107,0,.08)',
+      fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#FF6B00'
+    }]},
+    options:{ plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#4a5568'}},
+              y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#4a5568',
+                 callback:v=>'₨'+Number(v).toLocaleString()}}}}
+  });
+
+  // Daily table
+  document.getElementById('daily-table').innerHTML = dr.map(r => `<tr>
+    <td style="color:#fff;">${new Date(r.sale_date).toLocaleDateString('en-PK',{weekday:'short',year:'numeric',month:'short',day:'numeric'})}</td>
+    <td>${r.total_transactions}</td>
+    <td>₨ ${Number(r.total_fuel_revenue).toFixed(2)}</td>
+    <td>₨ ${Number(r.total_convenience_revenue).toFixed(2)}</td>
+    <td style="color:#22c55e;">₨ ${Number(r.cash_total).toFixed(2)}</td>
+    <td style="color:#818cf8;">₨ ${Number(r.card_total).toFixed(2)}</td>
+    <td><strong style="color:var(--fuel);">₨ ${Number(r.grand_total).toFixed(2)}</strong></td>
+  </tr>`).join('') || '<tr><td colspan="7" class="text-center" style="padding:2rem; color:#4a5568;">No data yet</td></tr>';
+
+  // Fuel revenue by type
+  const fr = await fetch('/api/reports/fuel', {credentials:'include'}).then(r => r.json());
+  const colors = ['#FF6B00','#22c55e','#818cf8','#eab308','#06b6d4'];
+  new Chart(document.getElementById('fuelChart'), {
+    type:'doughnut',
+    data:{ labels: fr.map(f=>f.fuel_type), datasets:[{
+      data: fr.map(f=>parseFloat(f.total_revenue)||0), backgroundColor: colors,
+      borderColor:'#12151C', borderWidth:3
+    }]},
+    options:{ plugins:{legend:{labels:{color:'#8a9bc0',font:{size:12}}}} }
+  });
+
+  // Low stock
+  const ls = await fetch('/api/reports/low-stock', {credentials:'include'}).then(r => r.json());
+  document.getElementById('low-stock-report').innerHTML = !ls.length
+    ? `<div class="text-center p-4" style="color:#22c55e;"><i class="bi bi-check-circle fs-3"></i><div class="mt-2">All tanks are adequately stocked</div></div>`
+    : ls.map(t => `<div class="d-flex justify-content-between align-items-center p-2 mb-2 rounded"
+        style="background:#1e2330; border-left:3px solid #ef4444;">
+        <div><div style="color:#fff; font-weight:600;">${t.tank_name}</div>
+             <div style="font-size:.8rem; color:#4a5568;">${t.fuel_type}</div></div>
+        <div class="text-end">
+          <div class="badge-danger">${t.fill_percent}% full</div>
+          <div style="font-size:.75rem; color:#4a5568; margin-top:2px;">${Number(t.current_level).toLocaleString()} L remaining</div>
+        </div>
+      </div>`).join('');
+}
+loadReports();
+</script>
+{% endblock %}
