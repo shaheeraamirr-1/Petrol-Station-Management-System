@@ -1,10 +1,9 @@
 -- ============================================================
 -- PETROL STATION MANAGEMENT SYSTEM (PSMS)
 -- PostgreSQL Schema
--- CS 2005: Database Systems
 -- ============================================================
 
--- Drop tables if they exist (for clean reinitialization)
+-- Drop tables
 DROP TABLE IF EXISTS transaction_items CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS shifts CASCADE;
@@ -65,7 +64,7 @@ CREATE TABLE pumps (
 );
 
 -- ============================================================
--- TABLE 5: pump_fuel_types  (junction: many pumps <-> many fuel types via tanks)
+-- TABLE 5: pump_fuel_types 
 -- ============================================================
 CREATE TABLE pump_fuel_types (
     pump_id         INT NOT NULL REFERENCES pumps(pump_id),
@@ -119,7 +118,7 @@ CREATE TABLE transactions (
 );
 
 -- ============================================================
--- TABLE 9: transaction_items  (for convenience store line items)
+-- TABLE 9: transaction_items
 -- ============================================================
 CREATE TABLE transaction_items (
     item_line_id    SERIAL PRIMARY KEY,
@@ -263,22 +262,28 @@ GROUP BY s.shift_id, e.full_name, s.start_time, s.end_time,
 -- SEED DATA
 -- ============================================================
 
--- Admin user (password: admin1)
+-- Admin user
 INSERT INTO employees (full_name, username, password_hash, role, phone, hire_date)
-VALUES ('Station Manager', 'admin', 'scrypt:32768:8:1$RmpNjsTAUnRRPqlG$56d78d091263a82d45c223b6996f5c713c4c3b702bb317a771f77d9d53cf5540aaa62df9304d5fe8d572102230061e4c2f7df253e82a10ce7bdd87f05a91ba57', 'admin', '0337-8293449', '2026-04-01');
+VALUES
+('Station Manager', 'admin', 'scrypt:32768:8:1$3DlIZbUgyWtL9Gww$369faa6de235309eefdfe2bd90f6e3eb6b65525d562f0d76e0d632fe1c0fed6995316c79cd2c4c2b42a85ca0fee8ee67fd9bff1eeca93350ca0a39dfebb669d9', 'admin', '0300-2100764', '2026-04-10'),
+('Shaheer Aamir', 'shaheer_aamir', 'scrypt:32768:8:1$3DlIZbUgyWtL9Gww$369faa6de235309eefdfe2bd90f6e3eb6b65525d562f0d76e0d632fe1c0fed6995316c79cd2c4c2b42a85ca0fee8ee67fd9bff1eeca93350ca0a39dfebb669d9', 'admin', '0334-9995674', '2026-04-11'),
+('Sameer Faisal', 'sameer_faisal', 'scrypt:32768:8:1$3DlIZbUgyWtL9Gww$369faa6de235309eefdfe2bd90f6e3eb6b65525d562f0d76e0d632fe1c0fed6995316c79cd2c4c2b42a85ca0fee8ee67fd9bff1eeca93350ca0a39dfebb669d9', 'admin', '0330-2342523', '2026-04-12');
 
---Cashier (shaheer - shaheer1, hasan - hasa)
+-- Sample cashier
 INSERT INTO employees (full_name, username, password_hash, role, phone, hire_date)
-VALUES ('Shaheer Aamir', 'shaheer', 'scrypt:32768:8:1$DXOXgF4aA4HjA4sL$9d3c9d3e771113e4142da9ac957155f266a7fc1e4709827ee8b7f4d42ba21e1e6309d2779164f91ef05d2432c57b0108dc2dfd2672c033f0160191fd98d0177c', 'cashier', '0334-9995674', '2026-04-27');
-VALUES ('Hasan Ayaz', 'hasan', 'scrypt:32768:8:1$RKjp1P9iiisOPrF2$2880492b1872bff3d38826bfb02425414f7cbf34da308b2310d44c2dc3dd26a46966fa8389953bcd7cf6ef04745818bbeb5f3b27b639ed19638520d03ad7b140', 'cashier', '0330-3760191', '2026-04-28');
-VALUES ('Musaddiq Arbi', 'arbi', 'scrypt:32768:8:1$vHfcQIwBzafJX9ql$db8fe5d569c37684380032c121126cf555d47ee7d643753315cfa05ac66de03864992ed6062354c1aeacccee9e0a514cc5368175e933b155c244767f10eaf6ce', 'cashier', '0322-2934631', '2026-04-29');
+VALUES 
+('Hasan Ayaz', 'hasan_ayaz', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0311-6237422', '2026-04-15'),
+('Musaddiq Arbi', 'musaddiq_arbi', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0321-3456525', '2026-04-15'),
+('Asim Muneer', 'asim_muneer', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0323-2331451', '2026-04-15'),
+('Maryam Nawaz', 'maryam_nawaz', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0301-9876543', '2026-04-15'),
+('Bilawal Bhutto', 'bilawal_bhutto', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0333-4231532', '2026-04-15');
 
 -- Fuel types
 INSERT INTO fuel_types (name, price_per_liter) VALUES
-    ('EURO 5 (Premier)',  393.35),
-    ('EURO 5 (Octance +)', 420.00),
-    ('EURO 5 (Hi-Cetance Diesel)', 380.19),
-    ('LPG',  304.12),
+    ('Euro5 Premier',  399.86),
+    ('Euro5 Octane+', 420.00),
+    ('Euro5 Hi-Cetane (Diesel)',    399.58),
+    ('LPG (Liquid Petroleum Gas)',  304.12),
     ('CNG',  150.00);
 
 -- Tanks
@@ -303,16 +308,17 @@ INSERT INTO pump_fuel_types (pump_id, fuel_type_id, tank_id) VALUES
     (2, 1, 1), (2, 2, 2),   -- Pump 2: Petrol + Hi-Octane
     (3, 1, 1), (3, 3, 3),   -- Pump 3: Petrol + Diesel
     (4, 1, 1), (4, 3, 3),   -- Pump 4: Petrol + Diesel
-    (5, 3, 3), (5, 4, 4);   -- Pump 5: Diesel + Premium Diesel
+    (5, 3, 3), (5, 4, 4);   -- Pump 5: Diesel + LPG
 
 -- Convenience items
 INSERT INTO convenience_items (item_name, price, stock_quantity, category) VALUES
-    ('Nestle Mineral Water 500ml', 80.00,  200, 'Beverages'),
-    ('Gatorade Energy Drink', 250.00,   80, 'Beverages'),
-    ('Cola Next 500ml',      110.00,  150, 'Beverages'),
-    ('Lays Chips (Small)',    60.00,  100, 'Snacks'),
-    ('DairyMilk Chocolate',   80.00,   90, 'Snacks'),
-    ('Engine Oil 1L',        900.00,   30, 'Automotive'),
-    ('AREON Air Freshener', 1250.00,   25, 'Automotive'),
-    ('Wiper Fluid',          350.00,   20, 'Automotive');
+    ('Nestle Mineral Water 500ml',  50.00,  200, 'Beverages'),
+    ('Gatorade Energy Drink',  170.00,   80, 'Beverages'),
+    ('CocaCola 500ml',           110.00,  150, 'Beverages'),
+    ('Lays (Small)',        60.00,  100, 'Snacks'),
+    ('Kitkat Chocolate',        190.00,   90, 'Snacks'),
+    ('Engine Oil 1L',       1900.00,   30, 'Automotive'),
+    ('Aero Air Freshener',       1250.00,   25, 'Automotive'),
+    ('Pakwheels All-Purpose Cleaner',         1350.00,   20, 'Automotive');
+
 
