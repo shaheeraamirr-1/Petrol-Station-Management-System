@@ -102,10 +102,10 @@ async function loadTanks() {
     return `<div class="col-md-4 col-lg-2-4">
       <div class="stat-card">
         <div class="d-flex justify-content-between align-items-start mb-2">
-          <div style="font-family:'Rajdhani',sans-serif; font-size:1.1rem; color:#fff; font-weight:700;">${t.tank_name}</div>
+        <div style="font-family:'Rajdhani',sans-serif; font-size:1.1rem; color:var(--fuel); font-weight:700;">${t.tank_name}</div>
           <span class="${badge}">${pct}%</span>
         </div>
-        <div style="color:#4a5568; font-size:.78rem; margin-bottom:.5rem;">${t.fuel_name}</div>
+        <div style="color:#8a9bc0; font-size:.78rem; margin-bottom:.5rem;">${t.fuel_name}</div>
         <div class="tank-bar mb-1"><div class="tank-fill" style="width:${pct}%; background:${color}"></div></div>
         <div style="font-size:.78rem; color:#8a9bc0;">${Number(t.current_level).toLocaleString()} / ${Number(t.capacity_liters).toLocaleString()} L</div>
         ${t.current_level <= t.low_stock_alert ? `<div class="mt-1" style="font-size:.72rem; color:#ef4444;"><i class="bi bi-exclamation-triangle me-1"></i>Below alert threshold</div>` : ''}
@@ -127,7 +127,7 @@ async function loadPrices() {
   const tbody = document.getElementById('price-table-body');
   tbody.innerHTML = fuels.map(f => `
     <tr>
-      <td><span style="color:#fff; font-weight:500;">${f.name}</span></td>
+      <td><span style="color:var(--fuel); font-weight:500;">${f.name}</span></td>
       <td><span class="badge-fuel">₨ ${Number(f.price_per_liter).toFixed(2)}</span></td>
       <td style="color:#4a5568; font-size:.8rem;">${new Date(f.updated_at).toLocaleString('en-PK')}</td>
       ${isAdmin ? `<td><button class="btn btn-sm btn-outline-fuel" onclick="openEditPrice(${f.fuel_type_id},'${f.name}',${f.price_per_liter})">Edit</button></td>` : ''}
