@@ -91,7 +91,7 @@ async function loadEmployees() {
   const tbody = document.getElementById('emp-table-body');
   tbody.innerHTML = emps.map(e => `<tr>
     <td style="color:#4a5568;">#${e.employee_id}</td>
-    <td style="color:#fff; font-weight:500;">${e.full_name}</td>
+    <td style="color:var(--fuel); font-weight:500;">${e.full_name}</td>
     <td style="color:#8a9bc0;">${e.username}</td>
     <td><span class="${e.role==='admin'?'badge-fuel':'badge-ok'}" style="text-transform:capitalize;">${e.role}</span></td>
     <td style="font-size:.85rem;">${e.phone||'—'}</td>
