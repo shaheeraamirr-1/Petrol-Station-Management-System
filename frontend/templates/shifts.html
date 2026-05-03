@@ -80,7 +80,7 @@ async function loadShifts() {
     const end = s.end_time ? new Date(s.end_time).toLocaleString('en-PK',{hour:'2-digit',minute:'2-digit',month:'short',day:'numeric'}) : '—';
     return `<tr>
       <td style="color:#8a9bc0;">#${s.shift_id}</td>
-      <td style="color:#fff; font-weight:500;">${s.full_name}</td>
+      <td style="color:var(--fuel); font-weight:500;">${s.full_name}</td>
       <td style="font-size:.82rem;">${new Date(s.start_time).toLocaleString('en-PK',{hour:'2-digit',minute:'2-digit',month:'short',day:'numeric'})}</td>
       <td style="font-size:.82rem;">${end}</td>
       <td>${s.num_transactions}</td>
