@@ -1,6 +1,6 @@
 **Group Mmebers:**
-Shaheer Aamir Muhammad - 24K-2542
-Muhammad Musaddiq Arbi - 24K-2581
+Shaheer Aamir Muhammad - 24K-2542\N
+Muhammad Musaddiq Arbi - 24K-2581\N
 Hasan Ayaz - 24K-2525
 
 
