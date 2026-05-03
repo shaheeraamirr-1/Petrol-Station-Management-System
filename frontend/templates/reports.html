@@ -76,7 +76,7 @@ async function loadReports() {
 
   // Daily table
   document.getElementById('daily-table').innerHTML = dr.map(r => `<tr>
-    <td style="color:#fff;">${new Date(r.sale_date).toLocaleDateString('en-PK',{weekday:'short',year:'numeric',month:'short',day:'numeric'})}</td>
+    <td style="color:var(--text);">${new Date(r.sale_date).toLocaleDateString('en-PK',{weekday:'short',year:'numeric',month:'short',day:'numeric'})}</td>
     <td>${r.total_transactions}</td>
     <td>₨ ${Number(r.total_fuel_revenue).toFixed(2)}</td>
     <td>₨ ${Number(r.total_convenience_revenue).toFixed(2)}</td>
