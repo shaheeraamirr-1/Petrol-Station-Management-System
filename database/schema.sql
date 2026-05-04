@@ -274,7 +274,7 @@ INSERT INTO employees (full_name, username, password_hash, role, phone, hire_dat
 VALUES 
 ('Hasan Ayaz', 'hasan_ayaz', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0311-6237422', '2026-04-15'),
 ('Musaddiq Arbi', 'musaddiq_arbi', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0321-3456525', '2026-04-15'),
-('Asim Muneer', 'asim_muneer', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0323-2331451', '2026-04-15')
+('Asim Muneer', 'asim_muneer', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0323-2331451', '2026-04-15'),
 ('Babar Azam', 'babar56', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0318-0023875', '2026-04-19'),
 ('Maryam Nawaz', 'maryam_nawaz', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0301-9876543', '2026-04-15'),
 ('Bilawal Bhutto', 'bilawal_bhutto', 'scrypt:32768:8:1$g3hV0OBWY9qK2daR$aac38300f6be656ad3828b0cdaad4de7c6d241a9eb06c40d254cf273fc4a13fe050f5868649d26348b0256836019ca2a245238fc36d15af71cbe91e225e4bea5', 'cashier', '0333-4231532', '2026-04-15');
